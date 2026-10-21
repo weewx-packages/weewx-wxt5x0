@@ -18,3 +18,33 @@ Installation
 3) restart weeWX
 
   sudo systemctl restart weewx
+
+Independent continuation (0.9.0)
+
+This repository continues matthewwall/weewx-wxt5x0 with original history and
+GPL-3.0-only licensing. TCP serial-server support follows the use case in
+OH2LAK's PR #12. Connections open during polling and reconnect after EOF or
+socket errors. A failed connection does not abort driver construction.
+
+Install and select the driver explicitly with the station's configuration file:
+
+    weectl extension install https://github.com/weewx-packages/weewx-wxt5x0/archive/refs/tags/v0.9.0.zip
+    weectl station reconfigure --driver=user.wxt5x0 --config=/path/to/weewx.conf
+
+To connect a serial server, use these options in [WXT5x0]:
+
+    protocol = tcp
+    tcp_address = 192.168.1.20
+    tcp_port = 5000
+    address = 0
+
+The server must expose raw ASCII serial data. After max_tries, the driver raises
+RetriesExceeded so WeeWX can restart its engine and try again.
+
+Rain accumulation requires Rc, the cumulative rain counter. Ri is a rate and Rp
+is a peak rate. They cannot replace Rc. Configure the transmitter to include Rc
+in composite responses. Rc and Ri can be verified independently in the fixture
+tests using `python -m pytest -q tests`.
+
+Tests cover local TCP disconnection/reconnection and serial parsing. Confirm
+counter configuration and telemetry recovery on the actual transmitter.

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Modified 2026-10-22 by weewx-packages.
 # Copyright 2017-2024 Matthew Wall, all rights reserved
 # Distributed under terms of the GPLv3
 """
@@ -84,7 +85,7 @@ except ImportError:
         logmsg(syslog.LOG_ERR, msg)
 
 DRIVER_NAME = 'WXT5x0'
-DRIVER_VERSION = '0.7'
+DRIVER_VERSION = '0.9.0'
 
 MPS_PER_KPH = 0.277778
 MPS_PER_MPH = 0.44704
@@ -148,7 +149,7 @@ class Station(object):
         self.send_cmd(cmd)
         line = self.device.readline()
         if line:
-            line.replace(b'\x00', b'') # eliminate any NULL characters
+            line = line.replace(b'\x00', b'') # eliminate any NULL characters
         return line
 
     def get_address(self):
@@ -375,6 +376,45 @@ class StationSerial(Station):
             self.device = None
 
 
+class StationTCP(Station):
+    DEFAULT_BAUD = 0
+
+    def __init__(self, address, host, port=5000):
+        super(StationTCP, self).__init__(address, port, 0)
+        self.host = host
+        self.terminator = b'\r\n'
+        self.socket = None
+
+    def open(self):
+        import socket
+        try:
+            self.socket = socket.create_connection((self.host, self.port), self.timeout)
+            self.device = self.socket.makefile('rwb', buffering=0)
+        except OSError:
+            self.close()
+            raise
+
+    def close(self):
+        if self.device is not None:
+            self.device.close()
+            self.device = None
+        if self.socket is not None:
+            self.socket.close()
+            self.socket = None
+
+    def get_data(self, cmd):
+        try:
+            if self.device is None:
+                self.open()
+            raw = super(StationTCP, self).get_data(cmd)
+            if not raw.endswith(self.terminator):
+                raise IOError('Incomplete response from TCP serial server')
+            return raw
+        except OSError:
+            self.close()
+            raise
+
+
 class StationNMEA(Station):
     # RS422 NMEA defaults to 4800, 8, N, 1
     DEFAULT_BAUD = 4800
@@ -405,7 +445,7 @@ class WXT5x0ConfigurationEditor(weewx.drivers.AbstractConfEditor):
     # The station model such as WXT510 or WXT520
     model = WXT520
 
-    # The communication protocol to use, one of serial, nmea, or sdi12
+    # The communication protocol to use, one of serial, tcp, nmea, or sdi12
     protocol = serial
 
     # The port to which the station is connected
@@ -436,6 +476,7 @@ class WXT5x0Driver(weewx.drivers.AbstractDevice):
         'sdi12': StationSDI12,
         'nmea': StationNMEA,
         'serial': StationSerial,
+        'tcp': StationTCP,
     }
     DEFAULT_PORT = '/dev/ttyUSB0'
 
@@ -473,8 +514,13 @@ class WXT5x0Driver(weewx.drivers.AbstractDevice):
         baud = int(stn_dict.get('baud', baud))
         port = stn_dict.get('port', WXT5x0Driver.DEFAULT_PORT)
         self.last_rain_total = None
-        self._station = WXT5x0Driver.STATION.get(protocol)(address, port, baud)
-        self._station.open()
+        if protocol == 'tcp':
+            host = stn_dict.get('tcp_address', 'localhost')
+            tcp_port = int(stn_dict.get('tcp_port', 5000))
+            self._station = StationTCP(address, host, tcp_port)
+        else:
+            self._station = WXT5x0Driver.STATION.get(protocol)(address, port, baud)
+            self._station.open()
 
     def closePort(self):
         self._station.close()
