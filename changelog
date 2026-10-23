@@ -1,4 +1,4 @@
-Unreleased
+0.9.1 23oct2026
 * diagnostic script: --get-* options take no argument, --get-precip works
 * convert imperial hail values to hits/cm2 by dividing, not multiplying
 * configuration prompts offer serial and tcp only and keep the model
