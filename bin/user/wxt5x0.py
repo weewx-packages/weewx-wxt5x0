@@ -89,7 +89,7 @@ except ImportError:
         logmsg(syslog.LOG_ERR, msg)
 
 DRIVER_NAME = 'WXT5x0'
-DRIVER_VERSION = '0.9.0'
+DRIVER_VERSION = '0.9.1'
 
 MPS_PER_KPH = 0.277778
 MPS_PER_MPH = 0.44704
