@@ -2,13 +2,17 @@
 # Distributed under the terms of the GNU Public License (GPLv3)
 import importlib.util
 from pathlib import Path
+import runpy
 import socket
+import sys
 import threading
+import types
 from unittest.mock import Mock
 
 import pytest
 
-spec = importlib.util.spec_from_file_location('wxt5x0', Path(__file__).parents[1] / 'bin/user/wxt5x0.py')
+DRIVER = Path(__file__).parents[1] / 'bin/user/wxt5x0.py'
+spec = importlib.util.spec_from_file_location('wxt5x0', DRIVER)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
@@ -75,3 +79,47 @@ def test_unreachable_tcp_does_not_fail_driver_import():
     with pytest.raises(OSError):
         driver._station.get_composite()
     assert driver._station.device is None
+
+
+def test_imperial_hail_converted_to_hits_per_cm2():
+    parsed = m.Station.parse(b'0R3,Hc=6.4516I,Hi=6.4516I')
+    assert parsed['hail'] == pytest.approx(1.0)
+    assert parsed['hail_intensity'] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize('option, command', [
+    ('--get-wind', b'0R1\r\n'),
+    ('--get-pth', b'0R2\r\n'),
+    ('--get-precip', b'0R3\r\n'),
+    ('--get-supervisor', b'0R5\r\n'),
+    ('--get-composite', b'0R0\r\n'),
+])
+def test_single_message_options_take_no_argument(monkeypatch, capsys, option, command):
+    device = Mock()
+    device.readline.return_value = b'0Rx,Ta=12.0C\r\n'
+    serial = types.ModuleType('serial')
+    serial.Serial = Mock(return_value=device)
+    monkeypatch.setitem(sys.modules, 'serial', serial)
+    monkeypatch.setattr(sys, 'argv', ['wxt5x0', option])
+    runpy.run_path(str(DRIVER), run_name='__main__')
+    device.write.assert_called_once_with(command)
+    assert '0Rx,Ta=12.0C' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('answers, expected', [
+    (['WXT510', 'serial', '/dev/ttyS0', '1'],
+     {'model': 'WXT510', 'protocol': 'serial', 'port': '/dev/ttyS0', 'address': '1'}),
+    (['WXT510', 'tcp', '192.0.2.10', '4001', '1'],
+     {'model': 'WXT510', 'protocol': 'tcp', 'tcp_address': '192.0.2.10',
+      'tcp_port': '4001', 'address': '1'}),
+])
+def test_config_editor_offers_implemented_protocols(answers, expected):
+    editor = m.WXT5x0ConfigurationEditor()
+    choices = {}
+    replies = iter(answers)
+    def prompt(label, dflt=None, opts=None):
+        choices[label] = opts
+        return next(replies)
+    editor._prompt = prompt
+    assert editor.prompt_for_settings() == expected
+    assert choices['protocol'] == ['serial', 'tcp']

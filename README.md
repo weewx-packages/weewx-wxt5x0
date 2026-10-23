@@ -36,8 +36,8 @@ Then select the driver and restart WeeWX:
 weectl station reconfigure --driver=user.wxt5x0 --config=/path/to/weewx.conf
 ```
 
-The prompts offer `serial`, `nmea` and `sdi12`. Choose `serial`. For TCP, edit
-`weewx.conf` by hand as shown below.
+The prompts offer `serial` and `tcp`. For `serial` they ask for the port, for
+`tcp` for the host and port of the TCP serial server.
 
 ## Configuration
 
@@ -121,9 +121,6 @@ The script has no TCP transport.
 
 - Not tested on WXT5x0 hardware by weewx-packages.
 - Only the ASCII protocol works. NMEA and SDI-12 are not implemented.
-- The single-message options of the diagnostic script (`--get-wind` and the
-  other `--get-*` options) require an argument, and `--get-precip` fails.
-- Hail values reported in imperial units are converted with the wrong factor.
 - The TCP tests run against a local socket. They do not show recovery on a real
   serial server.
 
