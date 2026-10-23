@@ -2,6 +2,18 @@ Unreleased
 * diagnostic script: --get-* options take no argument, --get-precip works
 * convert imperial hail values to hits/cm2 by dividing, not multiplying
 * configuration prompts offer serial and tcp only and keep the model
+* CRC calculation follows the user guide (XOR, 0xA001) and returns the three
+  CRC characters. Only the --test-crc option of the diagnostic script uses it.
+* hail values in unit H (hits without area) are dropped instead of being
+  reported as hits/cm2
+* diagnostic script: --protocol accepts serial and tcp, with --tcp-address
+  and --tcp-port
+
+0.9.0 22oct2026
+* support a TCP serial server: protocol = tcp, with tcp_address and tcp_port.
+  The driver connects on the first poll and reconnects after end of stream or
+  a socket error. A failed connection does not stop the driver from loading.
+* remove NULL characters from replies (the cleaned line was discarded)
 
 0.7 21feb2024
 * fixed rain calculation when rain_total is None
