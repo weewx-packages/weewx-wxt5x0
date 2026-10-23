@@ -1,3 +1,8 @@
+Unreleased
+* diagnostic script: --get-* options take no argument, --get-precip works
+* convert imperial hail values to hits/cm2 by dividing, not multiplying
+* configuration prompts offer serial and tcp only and keep the model
+
 0.7 21feb2024
 * fixed rain calculation when rain_total is None
 

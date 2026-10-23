@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # Modified 2026-10-22 by weewx-packages.
+# Modified 2026-10-23 by weewx-packages: fix the --get-* options of the
+# diagnostic script, imperial hail conversion and the configuration prompts.
 # Copyright 2017-2024 Matthew Wall, all rights reserved
 # Distributed under terms of the GPLv3
 """
@@ -346,7 +348,7 @@ class Station(object):
                 pass # already cm^2
             elif unit == b'I':
                 if 'duration' not in obs:
-                    value *= CM2_PER_IN2
+                    value /= CM2_PER_IN2
             elif unit == b's':
                 pass # already seconds
             else:
@@ -445,7 +447,7 @@ class WXT5x0ConfigurationEditor(weewx.drivers.AbstractConfEditor):
     # The station model such as WXT510 or WXT520
     model = WXT520
 
-    # The communication protocol to use, one of serial, tcp, nmea, or sdi12
+    # The communication protocol to use, either serial or tcp
     protocol = serial
 
     # The port to which the station is connected
@@ -461,14 +463,20 @@ class WXT5x0ConfigurationEditor(weewx.drivers.AbstractConfEditor):
     def prompt_for_settings(self):
         print("Specify the model")
         model = self._prompt('model', 'WXT520')
-        print("Specify the protocol (serial, nmea, or sdi12)")
-        protocol = self._prompt('protocol', 'serial', ['serial', 'nmea', 'sdi12'])
-        print("Specify the serial port on which the station is connected, for")
-        print("example /dev/ttyUSB0 or /dev/ttyS0.")
-        port = self._prompt('port', '/dev/ttyUSB0')
+        print("Specify the protocol (serial or tcp)")
+        protocol = self._prompt('protocol', 'serial', ['serial', 'tcp'])
+        settings = {'model': model, 'protocol': protocol}
+        if protocol == 'tcp':
+            print("Specify the host and port of the TCP serial server")
+            settings['tcp_address'] = self._prompt('tcp_address', 'localhost')
+            settings['tcp_port'] = self._prompt('tcp_port', 5000)
+        else:
+            print("Specify the serial port on which the station is connected, for")
+            print("example /dev/ttyUSB0 or /dev/ttyS0.")
+            settings['port'] = self._prompt('port', '/dev/ttyUSB0')
         print("Specify the device address")
-        address = self._prompt('address', 0)
-        return {'protocol': protocol, 'port': port, 'address': address}
+        settings['address'] = self._prompt('address', 0)
+        return settings
 
 
 class WXT5x0Driver(weewx.drivers.AbstractDevice):
@@ -613,15 +621,15 @@ if __name__ == '__main__':
                       help='device address', default=0)
     parser.add_option('--poll-interval', metavar='POLL', type=int,
                       help='poll interval, in seconds', default=3)
-    parser.add_option('--get-wind',
+    parser.add_option('--get-wind', action='store_true',
                       help='get a single wind message')
-    parser.add_option('--get-pth',
+    parser.add_option('--get-pth', action='store_true',
                       help='get a pressure/temperature/humidity message')
-    parser.add_option('--get-precip',
+    parser.add_option('--get-precip', action='store_true',
                       help='get a single precipitation message')
-    parser.add_option('--get-supervisor',
+    parser.add_option('--get-supervisor', action='store_true',
                       help='get a single supervisor message')
-    parser.add_option('--get-composite',
+    parser.add_option('--get-composite', action='store_true',
                       help='get a single composite message')
     parser.add_option('--test-crc', metavar='STRING',
                       help='verify the CRC calculation')
@@ -655,7 +663,7 @@ if __name__ == '__main__':
         elif options.get_pth:
             print("%s" % s.get_pth().strip())
         elif options.get_precip:
-            print("%s" % s.get_precipitation().strip())
+            print("%s" % s.get_precip().strip())
         elif options.get_supervisor:
             print("%s" % s.get_supervisor().strip())
         elif options.get_composite:
