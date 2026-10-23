@@ -2,6 +2,8 @@
 # Modified 2026-10-22 by weewx-packages.
 # Modified 2026-10-23 by weewx-packages: fix the --get-* options of the
 # diagnostic script, imperial hail conversion and the configuration prompts.
+# Modified 2026-10-23 by weewx-packages: fix the CRC calculation, drop hail
+# values reported in hits, add the tcp protocol to the diagnostic script.
 # Copyright 2017-2024 Matthew Wall, all rights reserved
 # Distributed under terms of the GPLv3
 """
@@ -199,6 +201,18 @@ class Station(object):
 
     @staticmethod
     def calc_crc(txt):
+        """Calculate the CRC that the station expects in CRC mode.
+
+        The algorithm is CRC-16 with polynomial 0xA001, encoded as three
+        ASCII characters, per Appendix C of the WXT520 user guide M210906EN-C.
+
+        Args:
+            txt (str): The message from the address up to, but not including,
+                the CRC and the terminator (e.g., '0r0').
+
+        Returns:
+            str: The three CRC characters (e.g., 'Kld' for '0r0').
+        """
         # We need something that returns integers when iterated over.
         try:
             # Python 2
@@ -209,17 +223,17 @@ class Station(object):
 
         crc = 0
         for x in byte_iter:
-            crc |= x
+            crc ^= x
             for cnt in range(1, 9):
-                if crc << 16 == 1:
+                if crc & 1:
                     crc >>= 1
-                    crc |= 0xa001
+                    crc ^= 0xa001
                 else:
                     crc >>= 1
         a = 0x40 | (crc >> 12)
         b = 0x40 | ((crc >> 6) & 0x3f)
         c = 0x40 | (crc & 0x3f)
-        return a + b + c
+        return chr(a) + chr(b) + chr(c)
 
     OBSERVATIONS = {
         # aR1: wind message
@@ -249,6 +263,9 @@ class Station(object):
         b'Vr': 'reference_voltage',
         b'Id': 'information',
         }
+
+    # Set once the driver has logged that it ignores hail reported in hits.
+    hail_hits_logged = False
 
     @staticmethod
     def parse(raw):
@@ -343,12 +360,24 @@ class Station(object):
         elif 'hail' in obs:
             # hail: accumulation duration intensity intensity_peak
             # [S] hail M=(hits/cm^2 s hits/cm^2h) I=(hits/in^2 s hits/in^2h)
-            #          H=hits
+            #          H=(hits s hits/h)
             if unit == b'M':
                 pass # already cm^2
             elif unit == b'I':
                 if 'duration' not in obs:
                     value /= CM2_PER_IN2
+            elif unit == b'H':
+                # With hail units set to H the station counts hits without
+                # relating them to an area. The user guide gives no collecting
+                # area for hail, so the count cannot be converted to hits/cm^2,
+                # the unit of the other hail settings. Drop the value instead of
+                # reporting a count as if it were hits/cm^2.
+                if not Station.hail_hits_logged:
+                    loginf("hail unit 'H' (hits) cannot be converted to "
+                           "hits/cm^2, ignoring %s. Set the hail units to "
+                           "M or I (aRU,S=M)." % obs)
+                    Station.hail_hits_logged = True
+                value = None
             elif unit == b's':
                 pass # already seconds
             else:
@@ -611,10 +640,14 @@ if __name__ == '__main__':
     parser.add_option('--debug', action='store_true',
                       help='display diagnostic information while running')
     parser.add_option('--protocol',
-                      help='serial, nmea, or sdi12', default='serial')
+                      help='serial or tcp', default='serial')
     parser.add_option('--port',
                       help='serial port to which the station is connected',
                       default=WXT5x0Driver.DEFAULT_PORT)
+    parser.add_option('--tcp-address', metavar='HOST',
+                      help='host of the TCP serial server', default='localhost')
+    parser.add_option('--tcp-port', metavar='PORT', type=int,
+                      help='port of the TCP serial server', default=5000)
     parser.add_option('--baud', type=int,
                       help='baud rate', default=19200)
     parser.add_option('--address', type=int,
@@ -648,16 +681,15 @@ if __name__ == '__main__':
         exit(0)
 
     if options.protocol == 'serial':
-        cls = StationSerial
-    elif options.protocol == 'nmea':
-        cls = StationNMEA
-    elif options.protocol == 'sdi12':
-        cls = StationSDI12
+        station = StationSerial(options.address, options.port, options.baud)
+    elif options.protocol == 'tcp':
+        station = StationTCP(options.address, options.tcp_address,
+                             options.tcp_port)
     else:
         print("unknown protocol '%s'" % options.protocol)
         exit(1)
 
-    with cls(options.address, options.port, options.baud) as s:
+    with station as s:
         if options.get_wind:
             print("%s" % s.get_wind().strip())
         elif options.get_pth:

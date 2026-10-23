@@ -123,3 +123,53 @@ def test_config_editor_offers_implemented_protocols(answers, expected):
     editor._prompt = prompt
     assert editor.prompt_for_settings() == expected
     assert choices['protocol'] == ['serial', 'tcp']
+
+
+@pytest.mark.parametrize('message, crc', [
+    ('0r0', 'Kld'),
+    ('0r1,Sn=0.1M,Sm=0.1M,Sx=0.1M', 'GOG'),
+])
+def test_crc_matches_user_guide_examples(message, crc):
+    # Examples from the WXT520 user guide M210906EN-C, chapter 7.
+    assert m.Station.calc_crc(message) == crc
+
+
+def test_hail_in_hits_is_not_reported_as_hits_per_area():
+    parsed = m.Station.parse(b'0R3,Hc=12H,Hd=20s,Hi=3H')
+    assert parsed['hail'] is None
+    assert parsed['hail_intensity'] is None
+    assert parsed['hail_duration'] == 20
+
+
+def test_diagnostic_help_names_implemented_protocols(monkeypatch, capsys):
+    monkeypatch.setattr(sys, 'argv', ['wxt5x0', '--help'])
+    with pytest.raises(SystemExit):
+        runpy.run_path(str(DRIVER), run_name='__main__')
+    out = capsys.readouterr().out
+    assert 'serial or tcp' in out
+    assert 'nmea' not in out
+
+
+def test_diagnostic_script_polls_over_tcp(monkeypatch, capsys):
+    listener = socket.socket()
+    listener.bind(('127.0.0.1', 0))
+    listener.listen()
+    listener.settimeout(5)
+    received = []
+    def serve():
+        connection, _ = listener.accept()
+        with connection:
+            received.append(connection.recv(128))
+            connection.sendall(b'0R1,Dm=051D,Sm=0.1M\r\n')
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    monkeypatch.setattr(sys, 'argv', [
+        'wxt5x0', '--protocol=tcp', '--tcp-address=127.0.0.1',
+        '--tcp-port=%d' % listener.getsockname()[1], '--get-wind'])
+    try:
+        runpy.run_path(str(DRIVER), run_name='__main__')
+    finally:
+        thread.join(6)
+        listener.close()
+    assert received == [b'0R1\r\n']
+    assert '0R1,Dm=051D,Sm=0.1M' in capsys.readouterr().out

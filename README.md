@@ -100,22 +100,26 @@ The driver requests composite messages (`R0`) and converts the values to
 | `Hc`, `Hi` | `hail`, `hailRate` |
 | `Th`, `Vh`, `Vs`, `Vr` | `heatingTemp`, `heatingVoltage`, `supplyVoltage`, `referenceVoltage` |
 
+Hail values arrive in hits/cm² or hits/in²; the driver reports both in
+hits/cm². With the hail unit setting `H` the transmitter counts hits without an
+area. The driver then leaves `hail` and `hailRate` empty and logs this once.
+
 Rain accumulation needs `Rc`, the cumulative counter. `Ri` is a rate and `Rp` a
 peak rate; neither replaces `Rc`. Fields without a WeeWX name, such as
 `Rp` or `Rd`, keep the driver's own names, for example `rain_intensity_peak` and
 `rain_duration`.
 
-### Serial diagnostics
+### Diagnostics
 
-Stop WeeWX first, so that the serial port is free. Without options the script
-polls composite messages every 3 seconds and prints them raw and parsed:
+Stop WeeWX first, so that the serial port or the TCP serial server is free.
+Without options the script polls composite messages every 3 seconds and prints
+them raw and parsed:
 
 ```sh
 PYTHONPATH=/path/to/station/bin python -m user.wxt5x0 --port=/dev/ttyUSB0
+PYTHONPATH=/path/to/station/bin python -m user.wxt5x0 --protocol=tcp --tcp-address=192.0.2.10 --tcp-port=5000
 PYTHONPATH=/path/to/station/bin python -m user.wxt5x0 --help
 ```
-
-The script has no TCP transport.
 
 ## Limitations
 
