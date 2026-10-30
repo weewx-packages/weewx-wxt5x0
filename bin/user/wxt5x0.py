@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Modified 2026-10-30 by weewx-packages: parse and map internal temperature.
 # Modified 2026-10-22 by weewx-packages.
 # Modified 2026-10-23 by weewx-packages: fix the --get-* options of the
 # diagnostic script, imperial hail conversion and the configuration prompts.
@@ -89,7 +90,7 @@ except ImportError:
         logmsg(syslog.LOG_ERR, msg)
 
 DRIVER_NAME = 'WXT5x0'
-DRIVER_VERSION = '0.9.1'
+DRIVER_VERSION = '0.9.2'
 
 MPS_PER_KPH = 0.277778
 MPS_PER_MPH = 0.44704
@@ -245,6 +246,7 @@ class Station(object):
         b'Sx': 'wind_speed_max',
         # aR2: pressure, temperature, humidity message
         b'Ta': 'temperature',
+        b'Tp': 'internal_temperature',
         b'Ua': 'humidity',
         b'Pa': 'pressure',
         # aR3: precipitation message
@@ -524,6 +526,7 @@ class WXT5x0Driver(weewx.drivers.AbstractDevice):
         'windGustDir': 'wind_dir_max',
         'windGust': 'wind_speed_max',
         'outTemp': 'temperature',
+        'inTemp': 'internal_temperature',
         'outHumidity': 'humidity',
         'pressure': 'pressure',
         'rain_total': 'rain',
