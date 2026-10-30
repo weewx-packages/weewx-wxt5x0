@@ -95,10 +95,16 @@ The driver requests composite messages (`R0`) and converts the values to
 | `Dm`, `Sm` | `windDir`, `windSpeed` |
 | `Dx`, `Sx` | `windGustDir`, `windGust` |
 | `Ta`, `Ua`, `Pa` | `outTemp`, `outHumidity`, `pressure` |
+| `Tp` | `inTemp` |
 | `Rc` | `rain_total`, from which the driver computes `rain` |
 | `Ri` | `rainRate` |
 | `Hc`, `Hi` | `hail`, `hailRate` |
 | `Th`, `Vh`, `Vs`, `Vr` | `heatingTemp`, `heatingVoltage`, `supplyVoltage`, `referenceVoltage` |
+
+`inTemp` is the transmitter's internal temperature, which it uses for pressure
+calculation. It is not an indoor air measurement. The transmitter must include
+`Tp` in its composite messages for the driver to report it. See the
+[Vaisala PTU message settings](https://docs.vaisala.com/r/M211840EN-G/en-US/GUID-5C3927B5-A979-4B35-8519-86DC222B1E81/GUID-FBFC5B84-D571-48D1-9D31-49059975FE62/GUID-9ADF5539-3F48-4D05-B6F5-837AE9FF7190).
 
 Hail values arrive in hits/cm² or hits/in²; the driver reports both in
 hits/cm². With the hail unit setting `H` the transmitter counts hits without an

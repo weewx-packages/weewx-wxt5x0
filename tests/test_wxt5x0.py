@@ -1,4 +1,5 @@
 # Copyright 2026 weewx-packages
+# Modified 2026-10-30 by weewx-packages: cover internal temperature readings.
 # Distributed under the terms of the GNU Public License (GPLv3)
 import importlib.util
 from pathlib import Path
@@ -10,6 +11,7 @@ import types
 from unittest.mock import Mock
 
 import pytest
+import weewx.units
 
 DRIVER = Path(__file__).parents[1] / 'bin/user/wxt5x0.py'
 spec = importlib.util.spec_from_file_location('wxt5x0', DRIVER)
@@ -22,6 +24,34 @@ def test_null_bytes_removed():
     station.device = Mock()
     station.device.readline.return_value = b'0R0,Ta=1\x002.0C\r\n'
     assert m.Station.parse(station.get_composite())['temperature'] == 12
+
+
+@pytest.mark.parametrize('message', [b'0R0', b'0R2'])
+@pytest.mark.parametrize('reading, expected', [
+    (b'25.0C', 25.0),
+    (b'0.0C', 0.0),
+    (b'-12.5C', -12.5),
+    (b'77.0F', 25.0),
+    (b'32.0F', 0.0),
+    (b'0.0#', None),
+])
+def test_internal_temperature_parsing(message, reading, expected):
+    parsed = m.Station.parse(message + b',Ta=12.0C,Tp=' + reading + b',Th=30.0C\r\n')
+    assert parsed['internal_temperature'] == expected
+    assert parsed['temperature'] == 12.0
+    assert parsed['heating_temperature'] == 30.0
+
+
+def test_internal_temperature_in_loop_packet():
+    driver = m.WXT5x0Driver(protocol='tcp')
+    driver._station.get_composite = Mock(
+        return_value=b'0R0,Ta=12.0C,Tp=77.0F,Th=30.0C\r\n')
+    packet = next(driver.genLoopPackets())
+    assert packet['inTemp'] == 25.0
+    assert packet['outTemp'] == 12.0
+    assert packet['heatingTemp'] == 30.0
+    assert packet['usUnits'] == m.weewx.METRICWX
+    assert weewx.units.to_std_system(packet, m.weewx.US)['inTemp'] == 77.0
 
 
 def test_rain_requires_counter():
@@ -51,7 +81,7 @@ def test_tcp_disconnect_then_reconnect(monkeypatch):
                 with connection:
                     assert connection.recv(128) == b'2R0\r\n'
                     if i:
-                        connection.sendall(b'2R0,Ta=12.0C,Rc=2.0M\r\n')
+                        connection.sendall(b'2R0,Ta=12.0C,Tp=25.0C,Rc=2.0M\r\n')
         except Exception as error:
             errors.append(error)
     thread = threading.Thread(target=serve, daemon=True)
@@ -61,6 +91,7 @@ def test_tcp_disconnect_then_reconnect(monkeypatch):
     try:
         packet = next(driver.genLoopPackets())
         assert packet['outTemp'] == 12
+        assert packet['inTemp'] == 25
         assert packet['rain_total'] == 2
     finally:
         driver.closePort()
